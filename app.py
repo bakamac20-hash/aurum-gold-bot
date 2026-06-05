@@ -1,526 +1,523 @@
-"""
-AURUM — XAU/USD SMC Trading Bot
-Déployable sur share.streamlit.io (gratuit)
-"""
-
 import streamlit as st
-import requests
-import json
-import math
-from datetime import datetime, timedelta
-import time
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import plotly.graph_objects as go
+from datetime import datetime
 
-# ─── PAGE CONFIG ─────────────────────────────────────────────────────────────
+# --------------------------------------------------
+# CONFIG
+# --------------------------------------------------
+
 st.set_page_config(
-    page_title="Aurum — XAU/USD SMC",
-    page_icon="◈",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    page_title="AURUM XAUUSD BOT",
+    page_icon="📈",
+    layout="wide"
 )
 
-# ─── CSS CUSTOM ──────────────────────────────────────────────────────────────
+# --------------------------------------------------
+# STYLE
+# --------------------------------------------------
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
-
-:root {
-  --ink:    #0c0c0e;
-  --paper:  #0f0f12;
-  --panel:  #141418;
-  --border: #1f1f26;
-  --gold:   #d4a843;
-  --gold2:  #f0c060;
-  --bull:   #2ecc8f;
-  --bear:   #e8445a;
-  --blue:   #5b8cff;
-  --muted:  #6e6e85;
-  --text:   #c8c8d8;
-  --bright: #eeeef5;
-  --mono:   'IBM Plex Mono', monospace;
-  --serif:  'DM Serif Display', serif;
+.stApp{
+    background-color:#0d1117;
+    color:white;
 }
 
-html, body, [class*="css"] {
-    font-family: 'IBM Plex Mono', monospace !important;
-    background-color: #0c0c0e !important;
-    color: #c8c8d8 !important;
+.buy{
+    color:#00ff88;
+    font-size:32px;
+    font-weight:bold;
 }
 
-/* Hide Streamlit default elements */
-#MainMenu, footer, header { visibility: hidden; }
-.block-container { padding: 1rem 1rem 2rem 1rem !important; max-width: 520px !important; margin: 0 auto !important; }
-
-/* ── HEADER ── */
-.aurum-header {
-    background: #141418;
-    border: 1px solid #1f1f26;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 12px;
+.sell{
+    color:#ff4d4d;
+    font-size:32px;
+    font-weight:bold;
 }
 
-.brand-name {
-    font-family: 'DM Serif Display', serif;
-    font-size: 28px;
-    color: #f0c060;
-    line-height: 1;
-    margin: 0;
-}
-
-.brand-sub {
-    font-size: 9px;
-    color: #6e6e85;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    margin-top: 3px;
-}
-
-/* ── SIGNAL CARD ── */
-.signal-card {
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 10px;
-    border: 1px solid #1f1f26;
-}
-
-.signal-buy  { background: linear-gradient(135deg, rgba(46,204,143,.08), #141418); border-top: 2px solid #2ecc8f !important; }
-.signal-sell { background: linear-gradient(135deg, rgba(232,68,90,.08), #141418);  border-top: 2px solid #e8445a !important; }
-.signal-wait { background: linear-gradient(135deg, rgba(212,168,67,.08), #141418); border-top: 2px solid #d4a843 !important; }
-
-.signal-direction-buy  { font-family: 'DM Serif Display', serif; font-size: 52px; color: #2ecc8f; line-height: 1; }
-.signal-direction-sell { font-family: 'DM Serif Display', serif; font-size: 52px; color: #e8445a; line-height: 1; }
-.signal-direction-wait { font-family: 'DM Serif Display', serif; font-size: 52px; color: #d4a843; line-height: 1; }
-
-.conf-num { font-size: 32px; font-weight: 700; color: #eeeef5; letter-spacing: -.03em; }
-.conf-label { font-size: 8px; color: #6e6e85; letter-spacing: .12em; text-transform: uppercase; }
-
-/* ── METRIC CARD ── */
-.metric-card {
-    background: #141418;
-    border: 1px solid #1f1f26;
-    border-radius: 6px;
-    padding: 10px 12px;
-    text-align: center;
-}
-.metric-val { font-size: 20px; font-weight: 700; color: #eeeef5; letter-spacing: -.02em; font-family: 'DM Serif Display', serif; }
-.metric-label { font-size: 8px; color: #6e6e85; letter-spacing: .12em; text-transform: uppercase; margin-top: 2px; }
-
-/* ── SMC BADGE ── */
-.badge-bull { background: rgba(46,204,143,.08); border: 1px solid rgba(46,204,143,.25); color: #2ecc8f; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-.badge-bear { background: rgba(232,68,90,.08);  border: 1px solid rgba(232,68,90,.25);  color: #e8445a; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-.badge-purp { background: rgba(167,139,250,.08); border: 1px solid rgba(167,139,250,.25); color: #a78bfa; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-
-/* ── SECTION HEADER ── */
-.section-hdr {
-    font-size: 9px;
-    letter-spacing: .18em;
-    color: #6e6e85;
-    text-transform: uppercase;
-    padding: 8px 0 6px;
-    border-bottom: 1px solid #1f1f26;
-    margin-bottom: 8px;
-}
-
-/* ── ROW ── */
-.smc-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 7px 0;
-    border-bottom: 1px solid #1a1a22;
-    font-size: 11px;
-}
-.smc-val  { color: #6e6e85; font-size: 10px; }
-.smc-str  { color: #d4a843; font-size: 10px; }
-
-/* ── REASON ITEM ── */
-.reason-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    border-bottom: 1px solid #1a1a22;
-    font-size: 11px;
-    color: #c8c8d8;
-}
-.dot-bull { width: 6px; height: 6px; border-radius: 50%; background: #2ecc8f; display: inline-block; flex-shrink: 0; }
-.dot-bear { width: 6px; height: 6px; border-radius: 50%; background: #e8445a; display: inline-block; flex-shrink: 0; }
-
-/* ── SLTP ── */
-.sltp-box {
-    background: #0f0f12;
-    border: 1px solid #1f1f26;
-    border-radius: 5px;
-    padding: 10px;
-    text-align: center;
-}
-.sltp-label { font-size: 8px; color: #6e6e85; letter-spacing: .12em; text-transform: uppercase; }
-.sltp-sl  { font-size: 14px; font-weight: 700; color: #e8445a; }
-.sltp-tp1 { font-size: 14px; font-weight: 700; color: #2ecc8f; }
-.sltp-tp2 { font-size: 14px; font-weight: 700; color: #5b8cff; }
-
-/* ── LIVE DOT ── */
-.live-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: rgba(46,204,143,.08);
-    border: 1px solid rgba(46,204,143,.2);
-    border-radius: 3px;
-    padding: 3px 8px;
-    font-size: 9px;
-    color: #2ecc8f;
-    letter-spacing: .12em;
-}
-
-/* ── SCORE BAR ── */
-.score-bar-bg {
-    background: #1f1f26;
-    border-radius: 2px;
-    height: 3px;
-    margin: 8px 0;
-    overflow: hidden;
-}
-
-/* ── TRADE ITEM ── */
-.trade-item {
-    background: #141418;
-    border: 1px solid #1f1f26;
-    border-radius: 5px;
-    padding: 9px 12px;
-    margin-bottom: 5px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.t-dir-buy  { font-size: 11px; font-weight: 700; color: #2ecc8f; }
-.t-dir-sell { font-size: 11px; font-weight: 700; color: #e8445a; }
-.t-meta { font-size: 9px; color: #454555; }
-.t-win  { font-size: 11px; font-weight: 700; color: #2ecc8f; }
-.t-loss { font-size: 11px; font-weight: 700; color: #e8445a; }
-.t-be   { font-size: 11px; font-weight: 700; color: #d4a843; }
-
-/* Streamlit buttons override */
-.stButton > button {
-    background: #141418 !important;
-    color: #d4a843 !important;
-    border: 1px solid #2a2a35 !important;
-    border-radius: 4px !important;
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 10px !important;
-    letter-spacing: .1em !important;
-    text-transform: uppercase !important;
-    padding: 8px 16px !important;
-    width: 100% !important;
-}
-.stButton > button:hover {
-    background: #1f1f28 !important;
-    border-color: #d4a843 !important;
-}
-
-/* Tabs styling */
-.stTabs [data-baseweb="tab-list"] {
-    background: #141418;
-    border-bottom: 1px solid #1f1f26;
-    gap: 0;
-}
-.stTabs [data-baseweb="tab"] {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 9px;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: #6e6e85;
-    background: transparent;
-    border: none;
-    padding: 10px 14px;
-}
-.stTabs [aria-selected="true"] {
-    color: #d4a843 !important;
-    border-bottom: 2px solid #d4a843 !important;
-    background: transparent !important;
-}
-.stTabs [data-baseweb="tab-panel"] {
-    background: transparent;
-    padding: 12px 0 0 0;
-}
-
-/* Select & input */
-.stSelectbox > div, .stTextArea > div {
-    background: #141418 !important;
-    border-color: #1f1f26 !important;
-    font-family: 'IBM Plex Mono', monospace !important;
-    color: #c8c8d8 !important;
+.wait{
+    color:#ffd700;
+    font-size:32px;
+    font-weight:bold;
 }
 </style>
 """, unsafe_allow_html=True)
 
+# --------------------------------------------------
+# DATA
+# --------------------------------------------------
 
-# ─── DATA FETCHING ────────────────────────────────────────────────────────────
-@st.cache_data(ttl=900)  # cache 15 minutes
-def fetch_gold_candles():
-    """Fetch real XAU/USD 15-min candles. Deux sources gratuites."""
-    import random
+@st.cache_data(ttl=300)
+def load_data():
 
-    # Source 1 : Yahoo Finance
-    try:
-        end = int(datetime.now().timestamp())
-        start = int((datetime.now() - timedelta(days=5)).timestamp())
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=15m&period1={start}&period2={end}"
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        data = resp.json()
-        result = data["chart"]["result"][0]
-        timestamps = result["timestamp"]
-        q = result["indicators"]["quote"][0]
-        candles = []
-        for i in range(len(timestamps)):
-            try:
-                if q["open"][i] and q["close"][i] and q["high"][i] and q["low"][i]:
-                    candles.append({
-                        "time": datetime.fromtimestamp(timestamps[i]).strftime("%H:%M"),
-                        "open":  round(q["open"][i], 2),
-                        "high":  round(q["high"][i], 2),
-                        "low":   round(q["low"][i], 2),
-                        "close": round(q["close"][i], 2),
-                        "vol":   round(q.get("volume", [1000]*len(timestamps))[i] or 1000, 1)
-                    })
-            except Exception:
-                continue
-        if len(candles) >= 20:
-            return candles, "Yahoo Finance (réel)"
-    except Exception:
-        pass
+    symbol = "GC=F"
 
-    # Source 2 : Stooq
-    try:
-        url = "https://stooq.com/q/d/l/?s=xauusd&i=15m"
-        resp = requests.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
-        if resp.status_code == 200 and len(resp.text) > 100:
-            lines = resp.text.strip().split("\n")[1:]
-            candles = []
-            for line in lines[-120:]:
-                parts = line.split(",")
-                if len(parts) >= 5:
-                    try:
-                        candles.append({
-                            "time": parts[0],
-                            "open":  float(parts[-4]),
-                            "high":  float(parts[-3]),
-                            "low":   float(parts[-2]),
-                            "close": float(parts[-1]),
-                            "vol":   1000.0
-                        })
-                    except Exception:
-                        continue
-            if len(candles) >= 20:
-                return candles, "Stooq (réel)"
-    except Exception:
-        pass
+    data = yf.download(
+        symbol,
+        period="5d",
+        interval="15m",
+        auto_adjust=True,
+        progress=False
+    )
 
-    # Fallback synthétique
-    candles = []
-    price = 2340.0
-    now = datetime.now()
-    for i in range(100, -1, -1):
-        dt = now - timedelta(minutes=i * 15)
-        move = (random.random() - 0.48) * 6
-        o = price
-        c = round(price + move, 2)
-        h = round(max(o, c) + random.random() * 3, 2)
-        l = round(min(o, c) - random.random() * 3, 2)
-        candles.append({"time": dt.strftime("%H:%M"), "open": o, "high": h, "low": l, "close": c, "vol": round(800 + random.random() * 1200, 1)})
-        price = c
-    return candles, "Synthétique (API indisponible)"
+    return data
 
+df = load_data()
 
-# ─── SMC ENGINE ───────────────────────────────────────────────────────────────
-def detect_order_blocks(candles):
-    obs = []
-    for i in range(2, len(candles) - 1):
-        p, c, n = candles[i-1], candles[i], candles[i+1]
-        if p["close"] < p["open"] and n["close"] > n["open"]:
-            ratio = (n["close"] - n["open"]) / max(p["open"] - p["close"], 0.01)
-            if ratio > 1.5:
-                obs.append({"type": "bullish", "top": p["open"], "bottom": p["close"], "strength": min(100, int(ratio * 50))})
-        if p["close"] > p["open"] and n["close"] < n["open"]:
-            ratio = (n["open"] - n["close"]) / max(p["close"] - p["open"], 0.01)
-            if ratio > 1.5:
-                obs.append({"type": "bearish", "top": p["close"], "bottom": p["open"], "strength": min(100, int(ratio * 50))})
-    return obs[-6:]
+if df.empty:
+    st.error("Impossible de récupérer les données.")
+    st.stop()
 
-def detect_fvg(candles):
-    fvgs = []
-    for i in range(1, len(candles) - 1):
-        prev, nxt = candles[i-1], candles[i+1]
-        if nxt["low"] > prev["high"]:
-            fvgs.append({"type": "bullish", "top": nxt["low"], "bottom": prev["high"], "size": round(nxt["low"] - prev["high"], 2)})
-        if nxt["high"] < prev["low"]:
-            fvgs.append({"type": "bearish", "top": prev["low"], "bottom": nxt["high"], "size": round(prev["low"] - nxt["high"], 2)})
-    return fvgs[-6:]
+# --------------------------------------------------
+# EMA
+# --------------------------------------------------
 
-def detect_bos(candles, lookback=10):
-    signals = []
-    for i in range(lookback, len(candles)):
-        window = candles[i-lookback:i]
-        hh = max(c["high"] for c in window)
-        ll = min(c["low"] for c in window)
-        curr = candles[i]
-        if curr["close"] > hh:
-            signals.append({"type": "bullish", "level": round(hh, 2)})
-        if curr["close"] < ll:
-            signals.append({"type": "bearish", "level": round(ll, 2)})
-    return signals[-3:]
+def ema(series, period):
+    return series.ewm(span=period, adjust=False).mean()
 
-def detect_liquidity_sweep(candles):
-    sweeps = []
-    for i in range(5, len(candles)):
-        window = candles[i-5:i]
-        lh = max(c["high"] for c in window)
-        ll = min(c["low"] for c in window)
-        curr = candles[i]
-        if curr["high"] > lh and curr["close"] < lh:
-            sweeps.append({"type": "sell_side", "level": round(lh, 2)})
-        if curr["low"] < ll and curr["close"] > ll:
-            sweeps.append({"type": "buy_side", "level": round(ll, 2)})
-    return sweeps[-3:]
+df["EMA20"] = ema(df["Close"], 20)
+df["EMA50"] = ema(df["Close"], 50)
 
-def detect_choch(candles):
-    changes = []
-    for i in range(3, len(candles) - 1):
-        p3, p2, p1, curr = candles[i-3], candles[i-2], candles[i-1], candles[i]
-        if p3["close"] < p2["close"] < p1["close"] and curr["close"] < p1["low"]:
-            changes.append({"type": "bearish"})
-        if p3["close"] > p2["close"] > p1["close"] and curr["close"] > p1["high"]:
-            changes.append({"type": "bullish"})
-    return changes[-2:]
+# --------------------------------------------------
+# RSI
+# --------------------------------------------------
 
-def calc_ema(values, period):
-    if not values: return 0
-    k = 2 / (period + 1)
-    ema = values[0]
-    for v in values[1:]: ema = v * k + ema * (1 - k)
-    return round(ema, 2)
+def rsi(series, period=14):
 
-def calc_rsi(candles, period=14):
-    if len(candles) < period + 1: return 50
-    closes = [c["close"] for c in candles[-(period+1):]]
-    gains = losses = 0
-    for i in range(1, len(closes)):
-        d = closes[i] - closes[i-1]
-        if d > 0: gains += d
-        else: losses -= d
-    rs = gains / max(losses, 0.0001)
-    return round(100 - 100 / (1 + rs), 1)
+    delta = series.diff()
 
-def calc_atr(candles, period=14):
-    trs = []
-    cs = candles[-period:]
-    for i in range(1, len(cs)):
-        c, p = cs[i], cs[i-1]
-        trs.append(max(c["high"]-c["low"], abs(c["high"]-p["close"]), abs(c["low"]-p["close"])))
-    return round(sum(trs) / max(len(trs), 1), 2)
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
 
-def compute_signal(candles):
-    if len(candles) < 20:
-        return None
+    avg_gain = gain.rolling(period).mean()
+    avg_loss = loss.rolling(period).mean()
 
-    obs     = detect_order_blocks(candles)
-    fvgs    = detect_fvg(candles)
-    bos     = detect_bos(candles)
-    sweeps  = detect_liquidity_sweep(candles)
-    choch   = detect_choch(candles)
-    rsi     = calc_rsi(candles)
-    atr     = calc_atr(candles)
-    closes  = [c["close"] for c in candles]
-    ema20   = calc_ema(closes[-20:], 20)
-    ema50   = calc_ema(closes[-50:], 50) if len(closes) >= 50 else calc_ema(closes, 20)
+    rs = avg_gain / avg_loss
 
-    k12, k26 = 2/13, 2/27
-    e12 = e26 = closes[-1]
-    for v in closes[-26:]:
-        e12 = v*k12 + e12*(1-k12)
-        e26 = v*k26 + e26*(1-k26)
-    macd_val = round(e12 - e26, 3)
+    return 100 - (100 / (1 + rs))
 
-    recent_vols = [c["vol"] for c in candles[-20:]]
-    avg_vol = sum(recent_vols) / len(recent_vols)
-    vol_ratio = round(recent_vols[-1] / max(avg_vol, 0.01), 2)
-    vol_spike = vol_ratio > 1.5
+df["RSI"] = rsi(df["Close"])
 
-    price = candles[-1]["close"]
-    bull_score = bear_score = 0
-    reasons = []
+# --------------------------------------------------
+# ATR
+# --------------------------------------------------
 
-    bull_obs = [o for o in obs if o["type"]=="bullish" and o["bottom"] <= price <= o["top"]+atr]
-    bear_obs = [o for o in obs if o["type"]=="bearish" and o["bottom"]-atr <= price <= o["top"]]
-    if bull_obs: bull_score += 25; reasons.append({"type":"bull","text":f"OB haussier actif (force {bull_obs[0]['strength']}%)"})
-    if bear_obs: bear_score += 25; reasons.append({"type":"bear","text":f"OB baissier actif (force {bear_obs[0]['strength']}%)"})
+def atr(data, period=14):
 
-    bull_fvg = [f for f in fvgs if f["type"]=="bullish" and f["bottom"]-atr/2 <= price <= f["top"]+atr]
-    bear_fvg = [f for f in fvgs if f["type"]=="bearish" and f["bottom"]-atr <= price <= f["top"]+atr/2]
-    if bull_fvg: bull_score += 20; reasons.append({"type":"bull","text":f"FVG haussier ({bull_fvg[0]['size']}$)"})
-    if bear_fvg: bear_score += 20; reasons.append({"type":"bear","text":f"FVG baissier ({bear_fvg[0]['size']}$)"})
+    high_low = data["High"] - data["Low"]
 
-    if bos:
-        lb = bos[-1]
-        if lb["type"]=="bullish": bull_score += 15; reasons.append({"type":"bull","text":f"BOS haussier @ {lb['level']}"})
-        else: bear_score += 15; reasons.append({"type":"bear","text":f"BOS baissier @ {lb['level']}"})
+    high_close = np.abs(
+        data["High"] - data["Close"].shift()
+    )
 
-    if sweeps:
-        ls = sweeps[-1]
-        if ls["type"]=="buy_side": bull_score += 15; reasons.append({"type":"bull","text":f"Sweep acheteurs @ {ls['level']}"})
-        else: bear_score += 15; reasons.append({"type":"bear","text":f"Sweep vendeurs @ {ls['level']}"})
+    low_close = np.abs(
+        data["Low"] - data["Close"].shift()
+    )
 
-    if choch:
-        lc = choch[-1]
-        if lc["type"]=="bullish": bull_score += 10; reasons.append({"type":"bull","text":"ChoCH haussier détecté"})
-        else: bear_score += 10; reasons.append({"type":"bear","text":"ChoCH baissier détecté"})
+    ranges = pd.concat(
+        [high_low, high_close, low_close],
+        axis=1
+    )
 
-    if rsi < 35: bull_score += 10; reasons.append({"type":"bull","text":f"RSI survendu ({rsi})"})
-    elif rsi > 65: bear_score += 10; reasons.append({"type":"bear","text":f"RSI suracheté ({rsi})"})
+    true_range = np.max(ranges, axis=1)
 
-    if price > ema20 > ema50: bull_score += 10; reasons.append({"type":"bull","text":f"EMA20 > EMA50 ({ema20})"})
-    elif price < ema20 < ema50: bear_score += 10; reasons.append({"type":"bear","text":f"EMA20 < EMA50 ({ema20})"})
+    return pd.Series(true_range).rolling(period).mean()
 
-    if macd_val > 0: bull_score += 5; reasons.append({"type":"bull","text":f"MACD positif (+{macd_val})"})
-    else: bear_score += 5; reasons.append({"type":"bear","text":f"MACD négatif ({macd_val})"})
+df["ATR"] = atr(df)
 
-    if vol_spike:
-        lc2 = candles[-1]
-        if lc2["close"] > lc2["open"]: bull_score += 8; reasons.append({"type":"bull","text":f"Volume spike haussier ({vol_ratio}x)"})
-        else: bear_score += 8; reasons.append({"type":"bear","text":f"Volume spike baissier ({vol_ratio}x)"})
+# --------------------------------------------------
+# MACD
+# --------------------------------------------------
 
-    total = bull_score + bear_score
-    confidence = round(max(bull_score, bear_score) / max(total, 1) * 100)
-    direction = "WAIT"
-    if bull_score > bear_score and confidence >= 60: direction = "BUY"
-    elif bear_score > bull_score and confidence >= 60: direction = "SELL"
+ema12 = df["Close"].ewm(span=12).mean()
+ema26 = df["Close"].ewm(span=26).mean()
 
-    sl  = round(price - atr*1.5, 2) if direction=="BUY" else round(price + atr*1.5, 2)
-    tp1 = round(price + atr*2,   2) if direction=="BUY" else round(price - atr*2,   2)
-    tp2 = round(price + atr*3.5, 2) if direction=="BUY" else round(price - atr*3.5, 2)
-    rr  = round(abs(tp1-price) / max(abs(sl-price), 0.01), 2)
+df["MACD"] = ema12 - ema26
+df["SIGNAL"] = df["MACD"].ewm(span=9).mean()
 
-    return {
-        "direction": direction, "confidence": confidence,
-        "bull_score": bull_score, "bear_score": bear_score,
-        "reasons": reasons[:7], "price": price,
-        "rsi": rsi, "atr": atr, "ema20": ema20, "ema50": ema50,
-        "macd": macd_val, "vol_ratio": vol_ratio, "vol_spike": vol_spike,
-        "obs": obs, "fvgs": fvgs, "bos": bos, "sweeps": sweeps, "choch": choch,
-        "sl": sl, "tp1": tp1, "tp2": tp2, "rr": rr,
-        "candles": candles[-40:], "candles_total": len(candles),
-        "timestamp": datetime.now().strftime("%H:%M:%S")
-    }
+# --------------------------------------------------
+# PRIX ACTUEL
+# --------------------------------------------------
+
+price = float(df["Close"].iloc[-1])
+
+ema20 = float(df["EMA20"].iloc[-1])
+ema50 = float(df["EMA50"].iloc[-1])
+
+rsi_now = float(df["RSI"].iloc[-1])
+atr_now = float(df["ATR"].iloc[-1])
+
+macd_now = float(df["MACD"].iloc[-1])
+
+# --------------------------------------------------
+# HEADER
+# --------------------------------------------------
+
+st.title("AURUM XAU/USD BOT")
+
+st.caption(
+    f"Dernière mise à jour : {datetime.now().strftime('%H:%M:%S')}"
+)
+
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("Prix", round(price, 2))
+c2.metric("RSI", round(rsi_now, 2))
+c3.metric("ATR", round(atr_now, 2))
+c4.metric("MACD", round(macd_now, 2))  
+# ==================================================
+# GRAPHIQUE CANDLESTICK
+# ==================================================
+
+def plot_chart(data):
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Candlestick(
+        x=data.index,
+        open=data["Open"],
+        high=data["High"],
+        low=data["Low"],
+        close=data["Close"],
+        name="XAUUSD"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["EMA20"],
+        line=dict(color="orange", width=1),
+        name="EMA20"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=data.index,
+        y=data["EMA50"],
+        line=dict(color="blue", width=1),
+        name="EMA50"
+    ))
+
+    fig.update_layout(
+        template="plotly_dark",
+        height=600,
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis_rangeslider_visible=False
+    )
+
+    return fig
 
 
-# ─── AI ANALYSIS ─────────────────────────────────────────────────────────────
-def get_ai_analysis(s, trades):
-    wr = round(len([t for t in trades if t["result"]=="win"]) / max(len(trades),1) * 100) if trades else "N/A"
-    bos_t = s["bos"][-1]["type"] if s["bos"] else "aucun"
-    sw_t  = s["sweeps"][-1]["type"] if s["sweeps"] else "aucun"
-    ch_t  = s["choch"][-1]["type"] if s["choch"] else "aucun"
-    prompt = (
-        "Tu es un expert SMC specialise scalping XAU/USD 15min. "
-        "Analyse en francais (max 130 mots), direct et actionnable.\n\n"
-        "SIGNAL: " + str(s["direction"]) + " | Confiance: " + str(s["confidence"]) + "%\n"
-        "Prix: " + str(s["price"]) + " | RSI: " + str(s["rsi"]) + " | ATR: " + str(s["atr"]) + "\
+st.subheader("Graphique XAU/USD")
+
+st.plotly_chart(plot_chart(df), use_container_width=True)
+
+
+# ==================================================
+# BOS / CHOCH / FVG SIMPLIFIÉ
+# ==================================================
+
+def detect_structure(data):
+
+    highs = data["High"].values
+    lows = data["Low"].values
+    closes = data["Close"].values
+
+    bos = []
+    choch = []
+    fvg = []
+
+    for i in range(5, len(data)-1):
+
+        # Break of Structure
+        if closes[i] > max(highs[i-5:i]):
+            bos.append("bullish")
+
+        if closes[i] < min(lows[i-5:i]):
+            bos.append("bearish")
+
+        # Change of Character
+        if closes[i] > closes[i-1] > closes[i-2] and closes[i] < closes[i-3]:
+            choch.append("bearish")
+
+        if closes[i] < closes[i-1] < closes[i-2] and closes[i] > closes[i-3]:
+            choch.append("bullish")
+
+        # Fair Value Gap simple
+        if lows[i] > highs[i-2]:
+            fvg.append("bullish")
+
+        if highs[i] < lows[i-2]:
+            fvg.append("bearish")
+
+    return bos, choch, fvg
+
+
+bos, choch, fvg = detect_structure(df)
+
+
+# ==================================================
+# SCORE SIMPLE
+# ==================================================
+
+bull = 0
+bear = 0
+
+if ema20 > ema50:
+    bull += 1
+else:
+    bear += 1
+
+if rsi_now < 40:
+    bull += 1
+elif rsi_now > 60:
+    bear += 1
+
+if macd_now > 0:
+    bull += 1
+else:
+    bear += 1
+
+if len(bos) > len(choch):
+    bull += 1
+else:
+    bear += 1
+
+
+total = bull + bear
+confidence = round(max(bull, bear) / max(total, 1) * 100)
+
+
+if bull > bear and confidence >= 60:
+    signal = "BUY"
+elif bear > bull and confidence >= 60:
+    signal = "SELL"
+else:
+    signal = "WAIT"
+
+
+# ==================================================
+# AFFICHAGE SIGNAL
+# ==================================================
+
+st.subheader("Signal SMC")
+
+if signal == "BUY":
+    st.markdown(f"<div class='buy'>BUY 🔼</div>", unsafe_allow_html=True)
+elif signal == "SELL":
+    st.markdown(f"<div class='sell'>SELL 🔽</div>", unsafe_allow_html=True)
+else:
+    st.markdown(f"<div class='wait'>WAIT ⏸</div>", unsafe_allow_html=True)
+
+st.metric("Confiance", f"{confidence} %")
+
+
+# ==================================================
+# TP / SL
+# ==================================================
+
+sl = price - atr_now * 1.5 if signal == "BUY" else price + atr_now * 1.5
+tp1 = price + atr_now * 2 if signal == "BUY" else price - atr_now * 2
+tp2 = price + atr_now * 3 if signal == "BUY" else price - atr_now * 3
+
+col1, col2, col3 = st.columns(3)
+
+col1.metric("Stop Loss", round(sl, 2))
+col2.metric("Take Profit 1", round(tp1, 2))
+col3.metric("Take Profit 2", round(tp2, 2))
+
+# ==================================================
+# DASHBOARD GLOBAL
+# ==================================================
+
+st.subheader("Dashboard SMC")
+
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("EMA20", round(ema20, 2))
+c2.metric("EMA50", round(ema50, 2))
+c3.metric("RSI", round(rsi_now, 2))
+c4.metric("ATR", round(atr_now, 2))
+
+
+# ==================================================
+# ANALYSE SMC AVANCÉE (AMÉLIORATION DU SCORE)
+# ==================================================
+
+structure_score = 0
+
+# tendance EMA
+if ema20 > ema50:
+    structure_score += 2
+else:
+    structure_score -= 2
+
+# momentum RSI
+if rsi_now < 30:
+    structure_score += 2
+elif rsi_now > 70:
+    structure_score -= 2
+
+# MACD momentum
+if macd_now > 0:
+    structure_score += 1
+else:
+    structure_score -= 1
+
+# structure marché
+if len(bos) > len(choch):
+    structure_score += 2
+else:
+    structure_score -= 2
+
+# FVG bias
+bull_fvg = len([x for x in fvg if x == "bullish"])
+bear_fvg = len([x for x in fvg if x == "bearish"])
+
+structure_score += (bull_fvg - bear_fvg)
+
+
+# ==================================================
+# SIGNAL FINAL (VERSION PROPRE)
+# ==================================================
+
+if structure_score >= 4:
+    signal = "BUY"
+    confidence = min(95, 60 + structure_score * 5)
+
+elif structure_score <= -4:
+    signal = "SELL"
+    confidence = min(95, 60 + abs(structure_score) * 5)
+
+else:
+    signal = "WAIT"
+    confidence = 50
+
+
+# ==================================================
+# SIGNAL DISPLAY
+# ==================================================
+
+st.subheader("Signal Final (SMC Engine)")
+
+if signal == "BUY":
+    st.markdown("<div class='buy'>BUY 🔼</div>", unsafe_allow_html=True)
+
+elif signal == "SELL":
+    st.markdown("<div class='sell'>SELL 🔽</div>", unsafe_allow_html=True)
+
+else:
+    st.markdown("<div class='wait'>WAIT ⏸</div>", unsafe_allow_html=True)
+
+st.metric("Confiance SMC", f"{confidence} %")
+
+
+# ==================================================
+# MINI TRADE LOG (SESSION)
+# ==================================================
+
+if "trade_log" not in st.session_state:
+    st.session_state.trade_log = []
+
+
+trade_entry = {
+    "time": datetime.now().strftime("%H:%M:%S"),
+    "price": price,
+    "signal": signal,
+    "confidence": confidence
+}
+
+# éviter duplication à chaque refresh
+if len(st.session_state.trade_log) == 0 or st.session_state.trade_log[-1] != trade_entry:
+    st.session_state.trade_log.append(trade_entry)
+
+
+# ==================================================
+# AFFICHAGE HISTORIQUE
+# ==================================================
+
+st.subheader("Historique des signaux")
+
+for trade in reversed(st.session_state.trade_log[-10:]):
+
+    if trade["signal"] == "BUY":
+        st.write(f"🟢 {trade['time']} | BUY | {trade['price']} | {trade['confidence']}%")
+
+    elif trade["signal"] == "SELL":
+        st.write(f"🔴 {trade['time']} | SELL | {trade['price']} | {trade['confidence']}%")
+
+    else:
+        st.write(f"🟡 {trade['time']} | WAIT | {trade['price']} | {trade['confidence']}%")
+# ==================================================
+# AUTO REFRESH (STREAMLIT LIVE MODE)
+# ==================================================
+
+st.markdown("---")
+
+st.subheader("Contrôle")
+
+colA, colB, colC = st.columns(3)
+
+with colA:
+    if st.button("🔄 Rafraîchir"):
+        st.rerun()
+
+with colB:
+    if st.button("🧹 Reset historique"):
+        st.session_state.trade_log = []
+        st.success("Historique supprimé")
+
+with colC:
+    auto = st.toggle("Auto-refresh (30s)", value=False)
+
+if auto:
+    time.sleep(30)
+    st.rerun()
+
+
+# ==================================================
+# FILTRE ANTI-BRUIT FINAL
+# ==================================================
+
+# on stabilise le signal pour éviter flickering
+if len(st.session_state.trade_log) >= 3:
+
+    last_signals = [t["signal"] for t in st.session_state.trade_log[-3:]]
+
+    if last_signals.count("BUY") >= 2:
+        final_bias = "BUY"
+    elif last_signals.count("SELL") >= 2:
+        final_bias = "SELL"
+    else:
+        final_bias = "WAIT"
+
+else:
+    final_bias = signal
+
+
+# ==================================================
+# SIGNAL STABILISÉ
+# ==================================================
+
+st.subheader("Signal Stabilisé")
+
+if final_bias == "BUY":
+    st.markdown("<div class='buy'>BUY CONFIRMÉ 🔼</div>", unsafe_allow_html=True)
+
+elif final_bias == "SELL":
+    st.markdown("<div class='sell'>SELL CONFIRMÉ 🔽</div>", unsafe_allow_html=True)
+
+else:
+    st.markdown("<div class='wait'>MARCHÉ INCERTAIN ⏸</div>", unsafe_allow_html=True)
+
+
+# ==================================================
+# DISCLAIMER
+# ==================================================
+
+st.markdown("""
+---
+⚠️ Analyse automatique basée sur indicateurs techniques (EMA, RSI, MACD, structure simplifiée SMC).  
+Ce système ne constitue pas un conseil financier.  
+""")
