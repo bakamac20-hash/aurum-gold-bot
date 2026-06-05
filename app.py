@@ -516,12 +516,11 @@ def compute_signal(candles):
 # ─── AI ANALYSIS ─────────────────────────────────────────────────────────────
 def get_ai_analysis(s, trades):
     wr = round(len([t for t in trades if t["result"]=="win"]) / max(len(trades),1) * 100) if trades else "N/A"
-    prompt = f"""Tu es un expert SMC (Smart Money Concepts) spécialisé scalping XAU/USD 15min.
-Donne une analyse directe, professionnelle et actionnable (max 130 mots) en français.
-
-SIGNAL: {s['direction']} | Confiance: {s['confidence']}%
-Prix: {s['price']} | RSI: {s['rsi']} | ATR: {s['atr']}
-EMA20: {s['ema20']} | EMA50: {s['ema50']} | MACD: {s['macd']}
-OB actifs: {len(s['obs'])} | FVG actifs: {len(s['fvgs'])}
-BOS: {s["bos"][-1]["type"] if s["bos"] else "aucun"}
-Sweep: {s["sweeps"][-1]["type"] if s["sweeps"] else "aucun"
+    bos_t = s["bos"][-1]["type"] if s["bos"] else "aucun"
+    sw_t  = s["sweeps"][-1]["type"] if s["sweeps"] else "aucun"
+    ch_t  = s["choch"][-1]["type"] if s["choch"] else "aucun"
+    prompt = (
+        "Tu es un expert SMC specialise scalping XAU/USD 15min. "
+        "Analyse en francais (max 130 mots), direct et actionnable.\n\n"
+        "SIGNAL: " + str(s["direction"]) + " | Confiance: " + str(s["confidence"]) + "%\n"
+        "Prix: " + str(s["price"]) + " | RSI: " + str(s["rsi"]) + " | ATR: " + str(s["atr"]) + "\
