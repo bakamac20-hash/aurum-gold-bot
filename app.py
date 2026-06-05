@@ -523,5 +523,5 @@ SIGNAL: {s['direction']} | Confiance: {s['confidence']}%
 Prix: {s['price']} | RSI: {s['rsi']} | ATR: {s['atr']}
 EMA20: {s['ema20']} | EMA50: {s['ema50']} | MACD: {s['macd']}
 OB actifs: {len(s['obs'])} | FVG actifs: {len(s['fvgs'])}
-BOS: {s['bos'][-1]['type'] if s['bos'] else 'aucun'}
-Sweep: {s['sweeps'][-1]['type'] if s['sweeps'] else 'aucun'
+BOS: {s["bos"][-1]["type"] if s["bos"] else "aucun"}
+Sweep: {s["sweeps"][-1]["type"] if s["sweeps"] else "aucun"
